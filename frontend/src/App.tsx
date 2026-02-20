@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, Legend } from 'recharts';
-import { Upload, Download, ChartBar, Activity, CheckCircle, Database } from 'lucide-react';
+import { Upload, Download, BarChart, Activity, CheckCircle, Database } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Get API URL from env or default
@@ -175,8 +175,8 @@ function App() {
                             onClick={handleUpload}
                             disabled={!file || loading}
                             className={`px-8 py-3 rounded-lg font-semibold text-white shadow-lg transition-all ${!file || loading
-                                    ? 'bg-gray-400 cursor-not-allowed'
-                                    : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-500/30'
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-500/30'
                                 }`}
                         >
                             {loading ? (
@@ -227,7 +227,7 @@ function App() {
                             {/* Scatter Plot */}
                             <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-gray-100 min-h-[500px]">
                                 <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                                    <ChartBar className="text-blue-500" /> Customer Clusters
+                                    <BarChart className="text-blue-500" /> Customer Clusters
                                 </h3>
                                 <div className="h-[400px] w-full">
                                     <ResponsiveContainer width="100%" height="100%">

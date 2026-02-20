@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Data
+customers.db
+kmeans_model.pkl
+segmented_customers.csv
+data/

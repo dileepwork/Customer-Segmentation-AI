@@ -9,6 +9,9 @@ from preprocessing import load_data, clean_data, preprocess_data
 from model import train_model, find_optimal_k
 from insights import generate_cluster_insights
 
+# Supabase imports
+from supabase import create_client, Client
+
 app = FastAPI(title="Customer Segmentation API")
 
 # CORS
@@ -20,16 +23,91 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Determine DB Path based on environment
-# Vercel filesystem is read-only except for /tmp
-if os.environ.get("VERCEL"):
-    DB_PATH = "/tmp/customers.db"
-else:
-    DB_PATH = "customers.db"
+# --- DATABASE CONFIGURATION ---
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+USE_SUPABASE = SUPABASE_URL and SUPABASE_KEY
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    return conn
+# Determine DB Path for SQLite fallback
+if os.environ.get("VERCEL"):
+    SQLITE_DB_PATH = "/tmp/customers.db"
+else:
+    SQLITE_DB_PATH = "customers.db"
+
+# --- HELPER FUNCTIONS ---
+
+def get_sqlite_connection():
+    return sqlite3.connect(SQLITE_DB_PATH)
+
+def get_supabase_client() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def save_data(df: pd.DataFrame):
+    """Saves dataframe to either Supabase or SQLite."""
+    if USE_SUPABASE:
+        try:
+            supabase = get_supabase_client()
+            
+            # 1. Truncate existing data (simulate replace)
+            # optimized: delete all rows where id is not null (assuming id column exists)
+            # Note: For this to work efficiently, we just delete everything.
+            # Only way to 'delete all' without Where clause in some SDKs is tricky, 
+            # but usually .neq('id', 0) works if IDs are positive.
+            supabase.table('customers').delete().neq('id', 0).execute()
+
+            # 2. Convert to records
+            records = df.to_dict(orient='records')
+            
+            # 3. Store in 'data' JSONB column to handle dynamic CSV schema
+            # We wrap each record: { "data": record_content }
+            rows_to_insert = [{"data": record} for record in records]
+            
+            # 4. Insert in chunks (Supabase has payload limits)
+            chunk_size = 1000
+            for i in range(0, len(rows_to_insert), chunk_size):
+                chunk = rows_to_insert[i:i + chunk_size]
+                supabase.table('customers').insert(chunk).execute()
+                
+        except Exception as e:
+            print(f"Supabase Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Supabase Save Error: {str(e)}")
+    else:
+        # SQLite Fallback
+        conn = get_sqlite_connection()
+        df.to_sql('customers', conn, if_exists='replace', index=False)
+        conn.close()
+
+def load_data_from_db() -> pd.DataFrame:
+    """Loads data from either Supabase or SQLite."""
+    if USE_SUPABASE:
+        try:
+            supabase = get_supabase_client()
+            # Fetch all data (limit is usually 1000 by default, need to paginate if huge)
+            # For simplicity in this demo, we fetch max 10000 or use automatic pagination if supported
+            # The python client handles some pagination but explicitness is safer.
+            response = supabase.table('customers').select('data').execute()
+            
+            if not response.data:
+                return pd.DataFrame()
+            
+            # Extract the 'data' field from each row
+            records = [row['data'] for row in response.data]
+            return pd.DataFrame(records)
+            
+        except Exception as e:
+            print(f"Supabase Read Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Supabase Read Error: {str(e)}")
+    else:
+        # SQLite Fallback
+        conn = get_sqlite_connection()
+        try:
+            df = pd.read_sql("SELECT * FROM customers", conn)
+        except:
+            df = pd.DataFrame()
+        conn.close()
+        return df
+
+# --- API ENDPOINTS ---
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -57,10 +135,8 @@ async def upload_file(file: UploadFile = File(...)):
         # Add Segment label to dataframe
         processed_df['CustomerSegment'] = processed_df['Cluster'].apply(lambda c: insights[c]['label'])
         
-        # Save to SQLite
-        conn = get_db_connection()
-        processed_df.to_sql('customers', conn, if_exists='replace', index=False)
-        conn.close()
+        # Save to DB (Supabase or SQLite)
+        save_data(processed_df)
         
         return {
             "message": "File processed successfully",
@@ -82,12 +158,7 @@ async def upload_file(file: UploadFile = File(...)):
 @app.get("/clusters")
 def get_clusters():
     try:
-        conn = get_db_connection()
-        # Read from DB
-        df = pd.read_sql("SELECT * FROM customers", conn)
-        conn.close()
-        
-        # Convert to records
+        df = load_data_from_db()
         data = df.to_dict(orient="records")
         return data
     except Exception as e:
@@ -96,9 +167,7 @@ def get_clusters():
 @app.get("/insights")
 def get_insights():
     try:
-        conn = get_db_connection()
-        df = pd.read_sql("SELECT * FROM customers", conn)
-        conn.close()
+        df = load_data_from_db()
         
         if df.empty:
             return {"message": "No data available"}
@@ -117,9 +186,7 @@ def get_insights():
 @app.get("/download")
 def download_results():
     try:
-        conn = get_db_connection()
-        df = pd.read_sql("SELECT * FROM customers", conn)
-        conn.close()
+        df = load_data_from_db()
         
         output_file = "segmented_customers.csv"
         df.to_csv(output_file, index=False)
