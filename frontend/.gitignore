@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+.DS_Store
+
+# Data
+customers.db
+kmeans_model.pkl
+segmented_customers.csv

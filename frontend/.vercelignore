@@ -1,0 +1,11 @@
+backend/
+node_modules/
+.git/
+venv/
+__pycache__/
+*.pyc
+customers.db
+segmented_customers.csv
+api/customers.db
+api/__pycache__/
+api/.venv/
